@@ -3,6 +3,7 @@ import networkx as nx
 from collections import defaultdict
 import heapq
 import functions 
+import matplotlib.pyplot as plt
 
 # Function to build a graph from a DataFrame
 def build_graph(df):
@@ -266,3 +267,59 @@ def analyze_centrality(flight_network, airport):
         'Degree Centrality': degree_centrality.get(airport, {}).get('Total_degree', "Airport Not Found"),
         'PageRank': pagerank.get(airport, "Airport Not Found")
     }
+
+
+
+# Function that visualizes the trends of the four centrality measures using histograms and returns the 5 airports (graph nodes) with the highest respective values.
+def compare_centralities(flight_network):
+    """
+    Calculates and compares centrality values for all nodes in the graph.
+    Generates histograms for the distributions of centralities.
+    Returns the top 5 airports for each centrality measure with their centrality values.
+
+    Parameters:
+        flight_network (networkx.DiGraph): The directed graph representing the flight network.
+
+    Returns:
+        dict: A dictionary containing the top 5 airports and their centrality values for each centrality measure.
+    """
+    # Calculate centralities
+    betweenness_centrality = calculate_betweenness_centrality(flight_network)
+    closeness_centrality = calculate_closeness_centrality(flight_network)
+    degree_df = calculate_degree_centrality(flight_network)
+    degree_centrality = degree_df.set_index('Airport')['Total_degree'].to_dict()
+    pagerank = calculate_pagerank(flight_network)
+    
+    # Create a DataFrame for centralities
+    centralities_df = pd.DataFrame({
+        'Betweenness Centrality': betweenness_centrality,
+        'Closeness Centrality': closeness_centrality,
+        'Degree Centrality': degree_centrality,
+        'PageRank': pagerank 
+    }).fillna(0)
+    
+    # Plot histograms for centrality distributions
+    fig, axes = plt.subplots(1, 4, figsize=(20, 5), sharey=True)
+    colors = "#0000FF"
+
+    for ax, centrality in zip(axes, centralities_df.columns):
+        centralities_df[centrality].hist(bins=20, alpha=0.7, ax=ax, color=colors)
+        ax.set_title(f'Distribution of {centrality}')
+        ax.set_xlabel('Centrality Value')
+        ax.set_ylabel('Frequency')
+        ax.grid(True)
+
+    plt.tight_layout()
+    plt.show()
+    
+    # Get top 5 airports for each centrality measure with their values
+    top_5_airports = {
+        centrality: centralities_df[centrality].nlargest(5).to_dict()
+        for centrality in centralities_df.columns
+    }
+    
+    return top_5_airports
+
+
+
+
