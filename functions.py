@@ -4,62 +4,76 @@ from collections import defaultdict
 import heapq
 import functions 
 
-# Funzione per costruire un grafo da un DataFrame
+# Function to build a graph from a DataFrame
 def build_graph(df):
+    """
+    Builds a directed graph from the data in a DataFrame.
+
+    Parameters:
+        df (pd.DataFrame): DataFrame containing the columns 'Origin_airport', 'Destination_airport', and 'Distance'.
+
+    Returns:
+        networkx.DiGraph: A directed graph with edge weights representing distances.
+    """
     G = nx.DiGraph()
     for _, row in df.iterrows():
         G.add_edge(row['Origin_airport'], row['Destination_airport'], weight=row['Distance'])
     return G
 
+# Function to prepare the DataFrame for conversion into a graph object
 def build_df_for_network(df):
-    # Calcolo della moda considerando le coppie come uguali indipendentemente dall'ordine
+    """
+    Prepares a DataFrame for constructing a directed graph based on flight data.
+
+    Parameters:
+        df (pd.DataFrame): DataFrame containing the columns 'Origin_airport', 'Destination_airport', and 'Distance'.
+
+    Returns:
+        pd.DataFrame: A new DataFrame with unique airport pairs and the calculated modal distance.
+    """
+    # Calculate the mode considering the pairs as equal regardless of the order
     df['Airport_pair'] = df.apply(
         lambda row: tuple(sorted([row['Origin_airport'], row['Destination_airport']])), axis=1
     )
 
-    # Calcola la moda della distanza per ogni coppia ordinata
+    # Calculate the mode of the distance for each ordered pair
     pair_mode_distances = (
         df.groupby('Airport_pair')['Distance']
-        .transform(lambda x: x.mode()[0])  # Prendi il valore più frequente (moda)
+        .transform(lambda x: x.mode()[0])  # Gets the most frequent value (mode)
     )
 
-    # Sostituisci la distanza con la moda calcolata
+    # Replace the distance with the calculated mode
     df['Distance_mode'] = pair_mode_distances
 
-    # Crea un nuovo DataFrame con le coppie distinte e le distanze aggiornate
+    # Create a new DataFrame with origin airport, destination airport, and distance
     df_util = df[['Origin_airport', 'Destination_airport', 'Distance_mode']].drop_duplicates().rename(columns={'Distance_mode': 'Distance'})
 
-    # Calcolo del conteggio per ciascuna coppia distinta di origine e destinazione
-    #pair_counts = df.groupby(['Origin_airport', 'Destination_airport']).size().reset_index(name='Count')
-    # Aggiungo il conteggio al DataFrame distinct_airports
-    #df_util = df_util.merge(pair_counts, on=['Origin_airport', 'Destination_airport'], how='left')
-
-    # Rimuovo la colonna temporanea Airport_pair
+    # Remove the temporary Airport_pair column
     df_util = df_util.drop(columns=['Airport_pair'], errors='ignore')
 
     return df_util
 
-
+# Function for calculating the degrees of each node in a graph
 def calculate_degree_centrality(graph):
     """
-    Calcola i gradi entranti, uscenti e normalizzati per ciascun nodo in un grafo.
+    Calculates the in-degrees, out-degrees, total degree, and normalized total degree for each node in a graph.
 
     Parameters:
-        graph (networkx.DiGraph): Il grafo rappresentante la rete di voli.
+        graph (networkx.DiGraph): The graph representing the flight network.
 
     Returns:
-        pd.DataFrame: DataFrame con gradi entranti, uscenti e normalizzati per ogni nodo.
+        pd.DataFrame: DataFrame with in-degrees, out-degrees, and normalized degrees for each node.
     """
     nodes = list(graph.nodes)
     n = len(nodes)
 
-    # Calcolo del grado uscente (out-degree)
+    # Calculate out-degree
     out_degree = {node: len(list(graph.successors(node))) for node in nodes}
 
-    # Calcolo del grado entrante (in-degree)
+    # Calculate in-degree
     in_degree = {node: len(list(graph.predecessors(node))) for node in nodes}
 
-    # Creazione del DataFrame
+    # Create the DataFrame
     degree_data = []
     for node in nodes:
         out_d = out_degree.get(node, 0)
@@ -77,32 +91,32 @@ def calculate_degree_centrality(graph):
     return pd.DataFrame(degree_data)
 
 
-# Funzione per calcolare la Betweenness Centrality ponderata
+# Function to calculate weighted Betweenness Centrality
 def calculate_betweenness_centrality(graph):
     """
-    Calcola la Betweenness Centrality ponderata per un grafo orientato.
+    Calculates the weighted Betweenness Centrality for a directed graph.
 
     Parameters:
-        graph (networkx.DiGraph): Il grafo rappresentante la rete di voli.
+        graph (networkx.DiGraph): The graph representing the flight network.
 
     Returns:
-        dict: Dizionario contenente la Betweenness Centrality per ogni nodo.
+        dict: Dictionary containing the Betweenness Centrality for each node.
     """
     centrality = defaultdict(float)
     nodes = list(graph.nodes)
 
-    for s in nodes:  # Per ogni nodo sorgente
-        # Inizializza strutture per percorsi più brevi
-        sigma = defaultdict(int)  # Numero di percorsi più brevi
+    for s in nodes:  # For each source node
+        # Initialize structures for shortest paths
+        sigma = defaultdict(int)  # Number of shortest paths
         sigma[s] = 1
-        dist = defaultdict(lambda: float('inf'))  # Distanza inizializzata a infinito
+        dist = defaultdict(lambda: float('inf'))  # Distance initialized to infinity
         dist[s] = 0
-        pred = defaultdict(list)  # Predecessori
-        queue = []  # Priority queue per Dijkstra
-        heapq.heappush(queue, (0, s))  # (distanza, nodo)
+        pred = defaultdict(list)  # Predecessors
+        queue = []  # Priority queue for Dijkstra
+        heapq.heappush(queue, (0, s))  # (distance, node)
         stack = []
 
-        # Calcolo dei percorsi più brevi (Dijkstra per grafi ponderati)
+        # Compute shortest paths (Dijkstra for weighted graphs)
         while queue:
             d, v = heapq.heappop(queue)
             if dist[v] < d:
@@ -110,16 +124,16 @@ def calculate_betweenness_centrality(graph):
             stack.append(v)
             for w in graph.successors(v):
                 weight = graph[v][w]['weight']
-                if dist[w] > dist[v] + weight:  # Nuovo percorso più breve trovato
+                if dist[w] > dist[v] + weight:  # New shortest path found
                     dist[w] = dist[v] + weight
                     heapq.heappush(queue, (dist[w], w))
                     sigma[w] = sigma[v]
                     pred[w] = [v]
-                elif dist[w] == dist[v] + weight:  # Percorso altrettanto breve trovato
+                elif dist[w] == dist[v] + weight:  # Another equally short path found
                     sigma[w] += sigma[v]
                     pred[w].append(v)
 
-        # Accumula dipendenze
+        # Accumulate dependencies
         dependency = defaultdict(float)
         while stack:
             w = stack.pop()
@@ -128,7 +142,7 @@ def calculate_betweenness_centrality(graph):
             if w != s:
                 centrality[w] += dependency[w]
 
-    # Normalizzazione (per grafi orientati)
+    # Normalization (for directed graphs)
     normalization_factor = (len(nodes) - 1) * (len(nodes) - 2)
     if normalization_factor > 0:
         for node in centrality:
@@ -137,28 +151,28 @@ def calculate_betweenness_centrality(graph):
     return dict(centrality)
 
 
-# Funzione per calcolare la Closeness Centrality ponderata
+# Function to calculate weighted Closeness Centrality
 def calculate_closeness_centrality(graph):
     """
-    Calcola la Closeness Centrality ponderata per un grafo orientato.
+    Calculates the weighted Closeness Centrality for a directed graph.
 
     Parameters:
-        graph (networkx.DiGraph): Il grafo rappresentante la rete di voli.
+        graph (networkx.DiGraph): The graph representing the flight network.
 
     Returns:
-        dict: Dizionario contenente la Closeness Centrality per ogni nodo.
+        dict: Dictionary containing the Closeness Centrality for each node.
     """
     closeness = {}
-    n = len(graph.nodes)  # Numero totale di nodi nel grafo
+    n = len(graph.nodes)  # Total number of nodes in the graph
 
     for node in graph.nodes:
-        # Inizializza le distanze
+        # Initialize distances
         dist = defaultdict(lambda: float('inf'))
         dist[node] = 0
         queue = []
-        heapq.heappush(queue, (0, node))  # (distanza, nodo)
+        heapq.heappush(queue, (0, node))  # (distance, node)
 
-        # Dijkstra per calcolare le distanze minime
+        # Dijkstra to calculate minimum distances
         while queue:
             d, current = heapq.heappop(queue)
             if d > dist[current]:
@@ -169,53 +183,53 @@ def calculate_closeness_centrality(graph):
                     dist[neighbor] = dist[current] + weight
                     heapq.heappush(queue, (dist[neighbor], neighbor))
 
-        # Calcola la somma delle distanze verso tutti gli altri nodi
+        # Calculate the sum of distances to all other nodes
         reachable_nodes = [d for d in dist.values() if d < float('inf')]
         sum_distances = sum(reachable_nodes)
 
-        # Calcola la Closeness Centrality (evita la divisione per 0)
+        # Calculate Closeness Centrality (avoid division by 0)
         if sum_distances > 0 and len(reachable_nodes) > 1:
             closeness[node] = (len(reachable_nodes) - 1) / sum_distances
         else:
-            closeness[node] = 0.0  # Nessun nodo raggiungibile o nodo isolato
+            closeness[node] = 0.0  # No reachable nodes or isolated node
 
     return closeness
 
-
+# Function to calculate PageRank for each node in a graph
 def calculate_pagerank(graph, alpha=0.85, max_iter=100, tol=1.0e-6):
     """
-    Calcola il PageRank utilizzando il grado uscente calcolato con calculate_degree_centrality.
+    Calculates the PageRank for a directed graph.
 
     Parameters:
-        graph (networkx.DiGraph): Il grafo rappresentante la rete di voli.
-        alpha (float): Fattore di damping (default: 0.85).
-        max_iter (int): Numero massimo di iterazioni (default: 100).
-        tol (float): Tolleranza per la convergenza (default: 1.0e-6).
+        graph (networkx.DiGraph): The graph representing the flight network.
+        alpha (float): Damping factor (default: 0.85).
+        max_iter (int): Maximum number of iterations (default: 100).
+        tol (float): Tolerance for convergence (default: 1.0e-6).
 
     Returns:
-        dict: Dizionario contenente il PageRank di ogni nodo.
+        dict: Dictionary containing the PageRank of each node.
     """
     nodes = list(graph.nodes)
     n = len(nodes)
-    pagerank = {node: 1 / n for node in nodes}  # Inizializza PR(v) = 1 / N
+    pagerank = {node: 1 / n for node in nodes}  # Initialize PR(v) = 1 / N
     damping_value = (1 - alpha) / n
 
-    # Calcolo del grado uscente usando calculate_degree_centrality
+    # Calculate out-degree using calculate_degree_centrality
     degree_df = calculate_degree_centrality(graph)
     out_degree = degree_df.set_index('Airport')['Out_degree'].to_dict()
 
     for iteration in range(max_iter):
         new_pagerank = {}
         for node in nodes:
-            # Somma dei contributi dai nodi predecessori
+            # Sum of contributions from predecessor nodes
             rank_sum = sum(
-                pagerank[neighbor] / out_degree.get(neighbor, 1)  # Usa il grado uscente calcolato
+                pagerank[neighbor] / out_degree.get(neighbor, 1)  # Use the calculated out-degree
                 for neighbor in graph.predecessors(node)
             )
-            # Calcolo del nuovo valore di PageRank
+            # Calculate the new PageRank value
             new_pagerank[node] = damping_value + alpha * rank_sum
 
-        # Verifica della convergenza
+        # Check for convergence
         diff = sum(abs(new_pagerank[node] - pagerank[node]) for node in nodes)
         if diff < tol:
             break
@@ -224,7 +238,7 @@ def calculate_pagerank(graph, alpha=0.85, max_iter=100, tol=1.0e-6):
 
     return pagerank
 
-
+# Function that returns the four centrality measures (Betweenness Centrality, Closeness Centrality, Degree Centrality, PageRank) for a specific airport (node in the graph)
 def analyze_centrality(flight_network, airport):
     """
     Compute only the Betweenness Centrality for a given airport.
@@ -236,18 +250,18 @@ def analyze_centrality(flight_network, airport):
     Returns:
         dict: A dictionary with Betweenness Centrality.
     """
-    # Calcolo della Betweenness Centrality ponderata
-    betweenness_centrality_weighted = calculate_betweenness_centrality(flight_network)
-    # Calcolo della Closeness Centrality ponderata
+    # Calculate weighted Betweenness Centrality
+    betweenness_centrality = calculate_betweenness_centrality(flight_network)
+    # Calculate weighted Closeness Centrality
     closeness_centrality = calculate_closeness_centrality(flight_network)
-    # Calcolo del Degree Centrality
+    # Calculate Degree Centrality
     degree_df = calculate_degree_centrality(flight_network)
     degree_centrality = degree_df.set_index('Airport').to_dict(orient='index')
-    # Calcolo del PageRank
+    # Calculate PageRank
     pagerank = calculate_pagerank(flight_network)
 
     return {
-        'Betweenness Centrality': betweenness_centrality_weighted.get(airport, "Airport Not Found"),
+        'Betweenness Centrality': betweenness_centrality.get(airport, "Airport Not Found"),
         'Closeness Centrality': closeness_centrality.get(airport, "Airport Not Found"), 
         'Degree Centrality': degree_centrality.get(airport, {}).get('Total_degree', "Airport Not Found"),
         'PageRank': pagerank.get(airport, "Airport Not Found")
