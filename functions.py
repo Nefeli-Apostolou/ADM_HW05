@@ -5,6 +5,9 @@ from collections import defaultdict
 import heapq
 import functions 
 import matplotlib.pyplot as plt
+import folium
+from folium import FeatureGroup, LayerControl
+
 
 # Function to build a graph from a DataFrame
 def build_graph(df):
@@ -512,3 +515,173 @@ def trace_path(predecessors, destination, origin):
         return path
     else:
         return []
+    
+
+
+def analyze_graph_features(flight_network):
+    # Count the number of airports (nodes) and flights (edges)
+    num_nodes = flight_network.number_of_nodes()
+    num_edges = flight_network.number_of_edges()
+
+    print(f"Number of airports (nodes): {num_nodes}")
+    print(f"Number of flights (edges): {num_edges}")
+
+    # Compute the density of the graph
+    density = (2 * num_edges) / (num_nodes * (num_nodes - 1)) if num_nodes > 1 else 0
+    print(f"Graph density: {density:.4f}")
+
+    # Compute degree for each airport
+    degrees = dict(flight_network.degree())  # Dictionary {node: degree}
+
+    # Plot histogram for degree distribution
+    plt.figure(figsize=(8, 6))
+    plt.hist(degrees.values(), bins=20, color='r', edgecolor='black')
+    plt.title("Degree Distribution")
+    plt.xlabel("Degree")
+    plt.ylabel("Frequency")
+    plt.show()
+
+    # Identify hubs (airports with degree higher than the 90th percentile)
+    degree_values = list(degrees.values())
+    degree_90th_percentile = np.percentile(degree_values, 90)
+    hubs = [node for node, degree in degrees.items() if degree > degree_90th_percentile]
+
+    print(f"Hubs (airports with degree > 90th percentile): {hubs}")
+
+    # Determine if the graph is sparse or dense
+    if density < 0.5:
+        print("The graph is sparse.")
+    else:
+        print("The graph is dense.")
+
+def summarize_graph_features(flight_network):
+    # Summary dictionary to collect data
+    summary = {}
+
+    # 1. Number of nodes and edges
+    num_nodes = flight_network.number_of_nodes()
+    num_edges = flight_network.number_of_edges()
+    summary['Number of nodes'] = num_nodes
+    summary['Number of edges'] = num_edges
+
+    # 2. Graph density
+    density = (2 * num_edges) / (num_nodes * (num_nodes - 1)) if num_nodes > 1 else 0
+    summary['Graph density'] = density
+
+    # 3. Degree distribution
+    degrees = dict(flight_network.degree())  # Degree distribution
+
+    # Plot histogram for degree distribution
+    plt.figure(figsize=(8, 6))
+    plt.hist(degrees.values(), bins=20, color='skyblue', edgecolor='black')
+    plt.title("Degree Distribution")
+    plt.xlabel("Degree")
+    plt.ylabel("Frequency")
+    plt.show()
+
+    # 4. Identify hubs (airports with degree higher than the 90th percentile)
+    degree_values = list(degrees.values())
+    degree_90th_percentile = np.percentile(degree_values, 90)
+    hubs = [(node, degree) for node, degree in degrees.items() if degree > degree_90th_percentile]
+    hubs_df = pd.DataFrame(hubs, columns=['Airport', 'Degree']).sort_values(by='Degree', ascending=False)
+
+    summary['Hubs'] = hubs_df
+
+    # Print summary report
+    print("\n--- Graph Summary Report ---")
+    for key, value in summary.items():
+        if key == 'Hubs':
+            print(f"\n{key}:")
+            print(value.to_string(index=False))
+        else:
+            print(f"{key}: {value}")
+
+    return summary
+
+def create_flight_network_map(df):
+    """
+    Create an interactive map visualizing flight network geographic spread.
+
+    Parameters:
+    -----------
+    df : pandas.DataFrame
+        Processed flight route data
+
+    Returns:
+    --------
+    folium.Map
+        Interactive map of flight network
+    """
+    # Calculate map center
+    center_lat = df[['Org_airport_lat', 'Dest_airport_lat']].mean().mean()
+    center_lon = df[['Org_airport_long', 'Dest_airport_long']].mean().mean()
+
+    # Create base map
+    m = folium.Map(
+        location=[center_lat, center_lon],
+        zoom_start=4,
+        tiles='CartoDB positron'  # Clean, minimalist map style
+    )
+
+    # Create feature groups for better layer control
+    routes_layer = FeatureGroup(name='Flight Routes')
+    airports_layer = FeatureGroup(name='Airports')
+
+    # Normalize route thickness and color based on passenger volume
+    max_passengers = df['Passengers'].max()
+    min_passengers = df['Passengers'].min()
+
+    # Track unique airports to avoid duplicate markers
+    unique_airports = set()
+
+    for _, route in df.iterrows():
+        # Route line
+        route_line = folium.PolyLine(
+            locations=[
+                [route['Org_airport_lat'], route['Org_airport_long']],
+                [route['Dest_airport_lat'], route['Dest_airport_long']]
+            ],
+            # Normalize line thickness and color based on passenger volume
+            weight=1 + 5 * (route['Passengers'] - min_passengers) / (max_passengers - min_passengers),
+            color='blue',
+            opacity=0.5,
+            tooltip=(
+                f"Route: {route['Origin_airport']} → {route['Destination_airport']}<br>"
+                f"Cities: {route['Origin_city']} → {route['Destination_city']}<br>"
+                f"Passengers: {route['Passengers']:,}"
+            )
+        )
+        routes_layer.add_child(route_line)
+
+        # Add origin airport marker if not already added
+        if route['Origin_airport'] not in unique_airports:
+            folium.CircleMarker(
+                location=[route['Org_airport_lat'], route['Org_airport_long']],
+                radius=3,
+                popup=f"{route['Origin_airport']} - {route['Origin_city']}",
+                color='red',
+                fill=True,
+                fillColor='red'
+            ).add_to(airports_layer)
+            unique_airports.add(route['Origin_airport'])
+
+        # Add destination airport marker if not already added
+        if route['Destination_airport'] not in unique_airports:
+            folium.CircleMarker(
+                location=[route['Dest_airport_lat'], route['Dest_airport_long']],
+                radius=3,
+                popup=f"{route['Destination_airport']} - {route['Destination_city']}",
+                color='green',
+                fill=True,
+                fillColor='green'
+            ).add_to(airports_layer)
+            unique_airports.add(route['Destination_airport'])
+
+    # Add layers to map
+    routes_layer.add_to(m)
+    airports_layer.add_to(m)
+
+    # Add layer control
+    LayerControl().add_to(m)
+
+    return m
