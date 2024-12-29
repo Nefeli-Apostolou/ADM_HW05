@@ -16,32 +16,20 @@ To explore interactive maps, click on the following link [click here](https://co
 └── main.ipynb
 
 # Tbale of Contents
-Flight Network Analysis (Q1)
 
-Analyze Graph Features
+1. Flight Network Analysis (Q1)
+   - 1.1 Analyze Graph Features
+   - 1.2 Summarize Graph Features
+   - 1.3 Deeper into the Analysis of the Dataset
+   - 1.4 Final Questions
+2. Nodes' Contribution (Q2)
+   - 2.1 Centrality Measures
+   - 2.2 Compare Centralities
+   - 2.3 ChatGPT Suggestion
+   - 2.4 Comparing Results
+3. Finding Best Routes (Q3)
+4. Airline Network Partitioning (Q4)
+5. Finding and Extracting Communities (Q5)
+6. Bonus Question - Connected Components on MapReduce
+7. Algorithmic Question (AQ)
 
-Summarize Graph Features
-
-Deeper into the Analysis of the Dataset
-
-Final Questions
-
-Nodes' Contribution (Q2)
-
-Centrality Measures
-
-Compare Centralities
-
-ChatGPT Suggestion
-
-Comparing Results
-
-Finding Best Routes (Q3)
-
-Airline Network Partitioning (Q4)
-
-Finding and Extracting Communities (Q5)
-
-Bonus Question - Connected Components on MapReduce
-
-Algorithmic Question (AQ)
