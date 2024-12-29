@@ -14,3 +14,34 @@ To explore interactive maps, click on the following link [click here](https://co
 ├── README.md
 ├── functions.py
 └── main.ipynb
+
+# Tbale of Contents
+Flight Network Analysis (Q1)
+
+Analyze Graph Features
+
+Summarize Graph Features
+
+Deeper into the Analysis of the Dataset
+
+Final Questions
+
+Nodes' Contribution (Q2)
+
+Centrality Measures
+
+Compare Centralities
+
+ChatGPT Suggestion
+
+Comparing Results
+
+Finding Best Routes (Q3)
+
+Airline Network Partitioning (Q4)
+
+Finding and Extracting Communities (Q5)
+
+Bonus Question - Connected Components on MapReduce
+
+Algorithmic Question (AQ)
