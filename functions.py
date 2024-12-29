@@ -1,5 +1,6 @@
 import pandas as pd
 import networkx as nx
+import numpy as np
 from collections import defaultdict
 import heapq
 import functions 
@@ -323,3 +324,191 @@ def compare_centralities(flight_network):
 
 
 
+def build_transport_network(df):
+    
+    """
+    Construct a directed graph from a DataFrame containing transportation and route information.
+
+    Parameters:
+    dataframe (pandas.DataFrame): DataFrame containing the route and node data.
+
+    Returns:
+    nx.DiGraph: Directed graph representing the transportation network.
+    """
+    
+    G = nx.DiGraph() 
+
+    for _, row in df.iterrows():
+        
+        origin = row['Origin_airport']
+        destination = row['Destination_airport']
+
+        # Adding nodes with attributes for source airport
+        G.add_node(origin, 
+                    city=row['Origin_city'], 
+                    population=int(row['Origin_population']), 
+                    lat=float(row['Org_airport_lat']), 
+                    long=float(row['Org_airport_long']))
+
+        # Adding nodes with attributes for destination airport
+        G.add_node(destination, 
+                    city=row['Destination_city'], 
+                    population=int(row['Destination_population']), 
+                    lat=float(row['Dest_airport_lat']), 
+                    long=float(row['Dest_airport_long']))
+        
+        # Adding edges with attributes
+        G.add_edge(origin, destination, 
+                    passengers=int(row['Passengers']), 
+                    flights=int(row['Flights']), 
+                    seats=int(row['Seats']), 
+                    weight=int(row['Distance']), 
+                    fly_date=row['Fly_date'])
+
+    return G
+
+
+
+def compute_optimal_path(network_graph, start_city, end_city, travel_date):
+    """
+    Determines the optimal path (shortest route) between the start and end cities based on the provided travel date.
+
+    Parameters:
+    network_graph (nx.Graph): The graph representing the flight network.
+    start_city (str): The starting city or airport.
+    end_city (str): The target city or airport.
+    travel_date (str): The date for which the optimal path is computed.
+
+    Returns:
+    pd.DataFrame: A pandas DataFrame containing the start city, target city, and the optimal route.
+    """
+
+    # Filter the graph to include only edges relevant to the given travel date.
+    date_filtered_graph = filter_network_by_date(network_graph, "fly_date", travel_date)
+
+    # Identify all airports in the start and target cities within the filtered graph.
+    starting_airports = [node for node, attributes in date_filtered_graph.nodes(data=True) if start_city in attributes.get("city", "")]
+    destination_airports = [node for node, attributes in date_filtered_graph.nodes(data=True) if end_city in attributes.get("city", "")]
+
+    minimal_distance = np.inf  # Set initial minimal distance to infinity.
+    best_path = ''  # Initialize best path as an empty string.
+
+    # Iterate through each airport in the start city to find the shortest route to the target airports.
+    for source_airport in starting_airports:
+        distance_map, predecessor_nodes = compute_shortest_paths(date_filtered_graph, source_airport)  # Compute shortest paths.
+
+        # Evaluate paths to each target airport.
+        for target_airport in destination_airports:
+            current_distance = distance_map[target_airport]
+
+            # Update minimal distance and best path if a better route is found.
+            if current_distance < minimal_distance:
+                minimal_distance = current_distance
+                best_path = "→".join(trace_path(predecessor_nodes, target_airport, source_airport))
+
+    # If no valid route is found, set the result to indicate no route.
+    if best_path == '':
+        best_path = 'No route available.'
+
+    # Prepare a pandas DataFrame with the start, target, and route information.
+    result_data = {
+        'Starting_City_Airport': [start_city],
+        'Destination_City_Airport': [end_city],
+        'Best_Route': [best_path]
+    }
+
+    # Return the result as a DataFrame.
+    return pd.DataFrame(result_data)
+
+def filter_network_by_date(network, attribute, specific_date):
+    """
+    Filters the provided network graph based on a specified date. This function retains only edges that match the
+    given date according to the specified attribute and returns a new graph with relevant edges and nodes.
+
+    Parameters:
+    network (nx.Graph): The original graph to filter.
+    attribute (str): The edge attribute to filter on (e.g., "fly_date").
+    specific_date (str): The date used to filter edges.
+
+    Returns:
+    nx.Graph: A new graph containing only edges that match the specified date.
+    """
+    filtered_graph = nx.Graph()  # Create a new graph for filtered edges and nodes.
+
+    # Iterate through each edge in the original graph.
+    for start_node, end_node, edge_data in network.edges(data=True):
+        # If the edge matches the specified date, add it to the filtered graph.
+        if edge_data.get(attribute, None) == specific_date:
+            filtered_graph.add_edge(start_node, end_node, **edge_data)  # Add the edge to the filtered graph.
+            filtered_graph.add_node(start_node, **network.nodes[start_node])  # Add the source node.
+            filtered_graph.add_node(end_node, **network.nodes[end_node])  # Add the target node.
+
+    return filtered_graph  # Return the filtered graph.
+
+def compute_shortest_paths(flight_network, starting_point):
+    """
+    Computes the shortest paths from the starting node to all other nodes in the graph using Dijkstra's algorithm.
+
+    Parameters:
+    flight_network (nx.Graph): The graph representing the flight network with weighted edges (flight routes).
+    starting_point (str): The node (airport) from which the shortest paths will be calculated.
+
+    Returns:
+    tuple: A tuple containing:
+        - distances (dict): A dictionary with the shortest distance from the starting point to each node.
+        - predecessors (dict): A dictionary mapping each node to its predecessor in the shortest path.
+    """
+
+    # Initialize distances and predecessors.
+    distances = {starting_point: 0}  # Distance to the starting point is 0.
+    predecessors = {starting_point: None}  # No predecessor for the starting point.
+    priority_queue = [(0, starting_point)]  # Priority queue for selecting the node with the smallest distance.
+
+    # Set initial distances to infinity for all other nodes.
+    for node in flight_network.nodes:
+        if node != starting_point:
+            distances[node] = np.inf
+        predecessors[node] = None
+
+    # Process the graph using Dijkstra's algorithm.
+    while priority_queue:
+        current_distance, current_node = heapq.heappop(priority_queue)  # Get the node with the smallest distance.
+
+        # Check each neighbor of the current node.
+        for neighbor, attributes in flight_network[current_node].items():
+            path_distance = current_distance + attributes["weight"]
+
+            # Update if a shorter path is found.
+            if path_distance < distances[neighbor]:
+                distances[neighbor] = path_distance
+                predecessors[neighbor] = current_node
+                heapq.heappush(priority_queue, (path_distance, neighbor))
+
+    return distances, predecessors
+
+def trace_path(predecessors, destination, origin):
+    """
+    Reconstructs the shortest path from the origin to the destination node based on the predecessors dictionary.
+
+    Parameters:
+    predecessors (dict): A dictionary mapping each node to its predecessor in the shortest path.
+    destination (str): The destination node where the path ends.
+    origin (str): The origin node where the path starts.
+
+    Returns:
+    list: A list of nodes representing the shortest path from origin to destination.
+    """
+    path = []
+    current_node = destination
+
+    # Backtrack from destination to origin using predecessors.
+    while current_node is not None:
+        path.append(current_node)
+        current_node = predecessors.get(current_node)
+
+    # Reverse the path if it starts with the origin.
+    if path and path[-1] == origin:
+        path.reverse()
+        return path
+    else:
+        return []
